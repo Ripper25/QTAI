@@ -761,15 +761,16 @@ def run_realtime_trader():
         data_buffer = saved_state['data_buffer']
         last_bar_time = saved_state['last_bar_time']
 
-        # Get actual account balance from MT5 instead of using saved balance
+        # Get actual account balance from MT5 - NO FALLBACKS, NO SIMULATIONS
         account_info = mt5.account_info()
         if account_info is not None:
             current_balance = account_info.balance
             print(f"Using actual account balance: ${current_balance:.2f}")
         else:
-            # If we can't get the account balance, use a default value
-            current_balance = 100.0  # Default value if MT5 account info is not available
-            print(f"WARNING: Could not get actual account balance. Using default: ${current_balance:.2f}")
+            # If we can't get the account balance, exit the script
+            print("ERROR: Could not get actual account balance from MT5. Exiting.")
+            mt5.shutdown()
+            return
 
         # Start with a clean trade history - no simulations
         trade_history = []
@@ -782,15 +783,16 @@ def run_realtime_trader():
             mt5.shutdown()
             return
 
-        # Get actual account balance from MT5
+        # Get actual account balance from MT5 - NO FALLBACKS, NO SIMULATIONS
         account_info = mt5.account_info()
         if account_info is not None:
             current_balance = account_info.balance
             print(f"Using actual account balance: ${current_balance:.2f}")
         else:
-            # If we can't get the account balance, use a default value
-            current_balance = 100.0  # Default value if MT5 account info is not available
-            print(f"WARNING: Could not get actual account balance. Using default: ${current_balance:.2f}")
+            # If we can't get the account balance, exit the script
+            print("ERROR: Could not get actual account balance from MT5. Exiting.")
+            mt5.shutdown()
+            return
 
         # Start with a clean trade history - no simulations
         trade_history = []
@@ -1055,8 +1057,13 @@ def run_realtime_trader():
                         if saved_state:
                             starting_balance = saved_state['current_balance']
                         else:
-                            # Use the account balance we got earlier
-                            starting_balance = account_info.balance if account_info is not None else 100.0  # Default value if MT5 account info is not available
+                            # Use the actual account balance - NO FALLBACKS, NO SIMULATIONS
+                            if account_info is not None:
+                                starting_balance = account_info.balance
+                            else:
+                                # If we can't get the account balance, don't show profit
+                                print("WARNING: Could not get actual account balance from MT5. Cannot calculate profit.")
+                                continue
 
                         print(f"Total Profit: ${current_balance - starting_balance:.2f}")
 
@@ -1089,9 +1096,16 @@ def run_realtime_trader():
         if saved_state:
             starting_balance = saved_state['current_balance']
         else:
-            # Try to get account info again
+            # Try to get account info again - NO FALLBACKS, NO SIMULATIONS
             account_info = mt5.account_info()
-            starting_balance = account_info.balance if account_info is not None else 100.0  # Default value if MT5 account info is not available
+            if account_info is not None:
+                starting_balance = account_info.balance
+            else:
+                # If we can't get the account balance, don't show summary
+                print("ERROR: Could not get actual account balance from MT5. Cannot show summary.")
+                mt5.shutdown()
+                print("\nMT5 connection closed.")
+                return
 
         # Get only trades from the current session (today)
         today = datetime.now().date()
