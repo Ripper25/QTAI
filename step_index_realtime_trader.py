@@ -470,6 +470,23 @@ def load_trading_state():
         print(f"Error loading saved state: {e}")
         return None
 
+def check_open_positions(symbol):
+    """
+    Check if there are any open positions for the given symbol
+
+    Parameters:
+    - symbol: Symbol name
+
+    Returns:
+    - bool: True if there are open positions, False otherwise
+    """
+    positions = mt5.positions_get(symbol=symbol)
+    if positions is None:
+        print(f"No positions found for {symbol}, error code: {mt5.last_error()}")
+        return False
+
+    return len(positions) > 0
+
 def execute_trade(symbol, pattern, volume):
     """
     Execute a trade based on the detected pattern
@@ -482,18 +499,19 @@ def execute_trade(symbol, pattern, volume):
     Returns:
     - bool: True if trade executed successfully, False otherwise
     """
+    # Check if there are already open positions for this symbol
+    if check_open_positions(symbol):
+        print(f"WARNING: There are already open positions for {symbol}. Skipping this trade.")
+        return False
+
     print(f"Executing trade for {symbol} at {pattern['bottom_time']}:")
     print(f"  Entry Price: {pattern['entry_price']}")
     print(f"  Exit Price: {pattern['exit_price']}")
     print(f"  Volume: {volume} lots")
     print(f"  Points Gained: {pattern['points_gained']}")
-    print(f"  Profit: ${pattern['points_gained'] * volume * (1/POINT_VALUE * 10):.2f}")
+    print(f"  Profit: ${pattern['points_gained'] * volume * POINT_VALUE:.2f}")
 
-    # In a real implementation, you would send the trade to MT5 here
-    # For now, we'll just simulate the trade
-
-    # Example of how to place a trade with MT5 API (commented out for simulation)
-    """
+    # Place a real trade using MT5 API
     # Define trade request
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
@@ -505,19 +523,22 @@ def execute_trade(symbol, pattern, volume):
         "tp": pattern['exit_price'],  # Take profit at exit price
         "deviation": 10,
         "magic": 123456,
-        "comment": "V Pattern Trade",
+        "comment": "QUANTA V Pattern",
         "type_time": mt5.ORDER_TIME_GTC,
         "type_filling": mt5.ORDER_FILLING_IOC,
     }
 
     # Send trade request
     result = mt5.order_send(request)
+    if result is None:
+        print(f"Trade execution failed, error code: {mt5.last_error()}")
+        return False
+
     if result.retcode != mt5.TRADE_RETCODE_DONE:
         print(f"Trade execution failed, error code: {result.retcode}")
         return False
 
     print(f"Trade executed successfully, ticket: {result.order}")
-    """
 
     return True
 
@@ -636,7 +657,7 @@ def run_realtime_trader():
                                     # Execute trade
                                     if execute_trade(symbol, pattern, volume):
                                         # Calculate profit
-                                        profit = pattern['points_gained'] * volume * (1/POINT_VALUE * 10)
+                                        profit = pattern['points_gained'] * volume * POINT_VALUE
 
                                         # Update balance
                                         current_balance += profit
@@ -715,7 +736,7 @@ def run_realtime_trader():
                                     # Execute trade
                                     if execute_trade(symbol, pattern, volume):
                                         # Calculate profit
-                                        profit = pattern['points_gained'] * volume * (1/POINT_VALUE * 10)
+                                        profit = pattern['points_gained'] * volume * POINT_VALUE
 
                                         # Update balance
                                         current_balance += profit
@@ -766,7 +787,7 @@ def run_realtime_trader():
                     # Execute trade
                     if execute_trade(symbol, pattern, volume):
                         # Calculate profit
-                        profit = pattern['points_gained'] * volume * (1/POINT_VALUE * 10)
+                        profit = pattern['points_gained'] * volume * POINT_VALUE
 
                         # Update balance
                         current_balance += profit
