@@ -22,7 +22,8 @@ This repository contains a real-time trading system for Step Index, implementing
 - Maximum volume of 50 lots
 - Volume limit of 200 lots in one direction
 - Volume step of 0.01 lots
-- Point value of 0.1 USD per point per standard lot
+- Point value of $1.00 per point per standard lot (1.0)
+- At minimum lot size (0.1), each point is worth $0.10
 - Initial balance of $90
 
 ## Backtest Results

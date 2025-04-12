@@ -14,7 +14,7 @@ MIN_VOLUME = 0.1  # Minimum volume of 0.1 lots
 MAX_VOLUME = 50  # Maximum volume of 50 lots
 VOL_LIMIT = 200  # Volume limit of 200 lots in one direction
 VOL_STEP = 0.01  # Volume step of 0.01 lots
-POINT_VALUE = 0.1  # 10 cents (0.1 USD) per point per standard lot
+POINT_VALUE = 1.0  # $1.00 per point per standard lot (at 0.1 lots, each point is worth $0.10)
 INITIAL_BALANCE = 90  # Starting balance of $90
 
 # Pattern detection parameters
