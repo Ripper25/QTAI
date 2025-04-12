@@ -19,7 +19,6 @@ MAX_VOLUME = 50  # Maximum volume of 50 lots
 VOL_LIMIT = 200  # Volume limit of 200 lots in one direction
 VOL_STEP = 0.01  # Volume step of 0.01 lots
 POINT_VALUE = 1.0  # $1.00 per point per standard lot (at 0.1 lots, each point is worth $0.10)
-INITIAL_BALANCE = 90  # Starting balance of $90
 
 # Pattern detection parameters
 LOOKBACK_WINDOW = 5  # Number of bars to look back
@@ -768,9 +767,9 @@ def run_realtime_trader():
             current_balance = account_info.balance
             print(f"Using actual account balance: ${current_balance:.2f}")
         else:
-            # Fallback to initial balance if account info is not available
-            current_balance = INITIAL_BALANCE
-            print(f"Could not get actual account balance. Using default: ${current_balance:.2f}")
+            # If we can't get the account balance, use a default value
+            current_balance = 100.0  # Default value if MT5 account info is not available
+            print(f"WARNING: Could not get actual account balance. Using default: ${current_balance:.2f}")
 
         # Start with a clean trade history - no simulations
         trade_history = []
@@ -789,9 +788,9 @@ def run_realtime_trader():
             current_balance = account_info.balance
             print(f"Using actual account balance: ${current_balance:.2f}")
         else:
-            # Fallback to initial balance if account info is not available
-            current_balance = INITIAL_BALANCE
-            print(f"Could not get actual account balance. Using default: ${current_balance:.2f}")
+            # If we can't get the account balance, use a default value
+            current_balance = 100.0  # Default value if MT5 account info is not available
+            print(f"WARNING: Could not get actual account balance. Using default: ${current_balance:.2f}")
 
         # Start with a clean trade history - no simulations
         trade_history = []
@@ -1057,7 +1056,7 @@ def run_realtime_trader():
                             starting_balance = saved_state['current_balance']
                         else:
                             # Use the account balance we got earlier
-                            starting_balance = account_info.balance if account_info is not None else INITIAL_BALANCE
+                            starting_balance = account_info.balance if account_info is not None else 100.0  # Default value if MT5 account info is not available
 
                         print(f"Total Profit: ${current_balance - starting_balance:.2f}")
 
@@ -1092,7 +1091,7 @@ def run_realtime_trader():
         else:
             # Try to get account info again
             account_info = mt5.account_info()
-            starting_balance = account_info.balance if account_info is not None else INITIAL_BALANCE
+            starting_balance = account_info.balance if account_info is not None else 100.0  # Default value if MT5 account info is not available
 
         # Get only trades from the current session (today)
         today = datetime.now().date()
