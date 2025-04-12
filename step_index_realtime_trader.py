@@ -742,12 +742,23 @@ def run_realtime_trader():
     # Try to load saved state
     saved_state = load_trading_state()
     if saved_state:
-        # Restore from saved state
+        # Restore only the data buffer from saved state, not the trade history
         data_buffer = saved_state['data_buffer']
-        trade_history = saved_state['trade_history']
-        current_balance = saved_state['current_balance']
         last_bar_time = saved_state['last_bar_time']
-        print("Restored trading state from previous session.")
+
+        # Get actual account balance from MT5 instead of using saved balance
+        account_info = mt5.account_info()
+        if account_info is not None:
+            current_balance = account_info.balance
+            print(f"Using actual account balance: ${current_balance:.2f}")
+        else:
+            # Fallback to initial balance if account info is not available
+            current_balance = INITIAL_BALANCE
+            print(f"Could not get actual account balance. Using default: ${current_balance:.2f}")
+
+        # Start with a clean trade history - no simulations
+        trade_history = []
+        print("Restored data buffer from previous session but starting with a clean trade history - no simulated trades")
     else:
         # Get initial data to fill the buffer
         data_buffer = get_initial_data(symbol, mt5.TIMEFRAME_M1, BUFFER_SIZE)
@@ -766,7 +777,10 @@ def run_realtime_trader():
             current_balance = INITIAL_BALANCE
             print(f"Could not get actual account balance. Using default: ${current_balance:.2f}")
 
+        # Start with a clean trade history - no simulations
         trade_history = []
+        print("Starting with a clean trade history - no simulated trades")
+
         last_bar_time = data_buffer[-1]['time']
 
     # Initialize heartbeat and failure tracking
@@ -1113,7 +1127,8 @@ def start_self_monitoring():
         message = f"🚀 *QUANTA Trading System Started* 🚀\n\n"
         message += f"*Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
         message += f"*Mode:* LIVE\n"
-        message += f"*Log File:* {log_file_path}\n"
+        # Remove log file path from notification as it might contain special characters
+        message += f"*Log:* Created successfully\n"
         send_telegram_notification(message, parse_mode='Markdown')
     except Exception as e:
         print(f"Error sending startup notification: {e}")
