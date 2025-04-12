@@ -264,21 +264,18 @@ def detect_v_pattern(price_buffer):
 
     return None
 
-def calculate_position_size(current_balance, pattern, trade_history):
+def calculate_position_size(current_balance, trade_history):
     """
-    Calculate position size using Kelly Criterion
+    Calculate position size using real MT5 account balance and actual trade history
+    NO SIMULATIONS, NO FALLBACKS
 
     Parameters:
-    - current_balance: Current account balance
-    - pattern: Pattern details
+    - current_balance: Current account balance from MT5
     - trade_history: List of previous trades (only from current session)
 
     Returns:
-    - float: Optimal position size in lots
+    - float: Position size in lots (always starts with MIN_VOLUME)
     """
-    # Theoretical loss for Kelly calculation (10 points)
-    theoretical_loss = 10.0
-
     # Get only trades from the current session (today)
     today = datetime.now().date()
     current_session_trades = [t for t in trade_history if t['time'].date() == today]
@@ -287,41 +284,58 @@ def calculate_position_size(current_balance, pattern, trade_history):
     total_trades = len(current_session_trades)
     winning_trades = sum(1 for trade in current_session_trades if trade['points_gained'] > 0)
 
-    # Always use a conservative estimate for the first few trades of each session
-    # This ensures we don't rely on historical data from previous sessions
-    if total_trades >= 5:
-        win_rate = winning_trades / total_trades
-        print(f"Using win rate of {win_rate:.2f} based on {total_trades} trades from current session")
-    else:
-        win_rate = 0.8  # Conservative estimate for first few trades
-        print(f"Using conservative win rate of {win_rate:.2f} (fewer than 5 trades in current session)")
+    # If we don't have enough real trades, use minimum volume
+    # NO SIMULATIONS, NO FALLBACKS
+    if total_trades < 5:
+        print(f"Not enough real trades ({total_trades}) to calculate Kelly. Using minimum volume: {MIN_VOLUME}")
+        return MIN_VOLUME
 
-    # Calculate average win amount from current session data only
-    if winning_trades > 0:
-        total_profit_points = sum(trade['points_gained'] for trade in current_session_trades if trade['points_gained'] > 0)
-        avg_win = total_profit_points / winning_trades
-        print(f"Using average win of {avg_win:.2f} points based on current session trades")
-    else:
-        avg_win = pattern['points_gained']
-        print(f"Using current pattern points gained of {avg_win:.2f} as average win")
+    # Calculate win rate from REAL trades only
+    win_rate = winning_trades / total_trades
+    print(f"Using win rate of {win_rate:.2f} based on {total_trades} REAL trades from current session")
 
-    # Calculate win/loss ratio
-    win_loss_ratio = avg_win / theoretical_loss
+    # Calculate average win amount from REAL trades only
+    if winning_trades == 0:
+        print(f"No winning trades in current session. Using minimum volume: {MIN_VOLUME}")
+        return MIN_VOLUME
 
-    # Calculate Kelly percentage
+    total_profit_points = sum(trade['points_gained'] for trade in current_session_trades if trade['points_gained'] > 0)
+    avg_win = total_profit_points / winning_trades
+    print(f"Using average win of {avg_win:.2f} points based on {winning_trades} REAL winning trades")
+
+    # Calculate average loss amount from REAL trades only
+    losing_trades = sum(1 for trade in current_session_trades if trade['points_gained'] <= 0)
+    if losing_trades == 0:
+        # If no losing trades, use minimum volume (no simulations)
+        print(f"No losing trades in current session. Using minimum volume: {MIN_VOLUME}")
+        return MIN_VOLUME
+
+    total_loss_points = abs(sum(trade['points_gained'] for trade in current_session_trades if trade['points_gained'] <= 0))
+    avg_loss = total_loss_points / losing_trades
+    print(f"Using average loss of {avg_loss:.2f} points based on {losing_trades} REAL losing trades")
+
+    # Calculate win/loss ratio using REAL data only
+    win_loss_ratio = avg_win / avg_loss
+    print(f"Using win/loss ratio of {win_loss_ratio:.2f} based on REAL trades")
+
+    # Calculate Kelly percentage using REAL data only
     kelly_pct = (win_rate * (win_loss_ratio + 1) - 1) / win_loss_ratio if win_loss_ratio > 0 else 0
+    print(f"Kelly percentage: {kelly_pct:.2f}")
 
     # Apply Kelly fraction (1/4 Kelly) and cap at 50%
     fractional_kelly = min(kelly_pct * 0.25, 0.5)
+    print(f"Fractional Kelly (1/4): {fractional_kelly:.2f}")
 
-    # Calculate volume based on Kelly percentage
+    # Calculate volume based on Kelly percentage and REAL account balance
     kelly_amount = current_balance * fractional_kelly
-    risk_amount = theoretical_loss * (1/POINT_VALUE * 10)  # Convert to dollars
+    risk_amount = avg_loss * (1/POINT_VALUE * 10)  # Convert to dollars using REAL average loss
     kelly_volume = kelly_amount / risk_amount if risk_amount > 0 else MIN_VOLUME
+    print(f"Kelly volume before limits: {kelly_volume:.2f}")
 
     # Ensure volume is within limits and rounded to volume step
     optimal_volume = min(max(MIN_VOLUME, kelly_volume), MAX_VOLUME)
     optimal_volume = round(optimal_volume / VOL_STEP) * VOL_STEP
+    print(f"Final volume after limits: {optimal_volume:.2f}")
 
     return optimal_volume
 
@@ -476,18 +490,17 @@ def format_error_notification(error_message):
     message += f"*Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
     return message
 
-def format_daily_summary(data_buffer, trade_history, current_balance, patterns_found):
+def format_daily_summary(trade_history, current_balance, patterns_found):
     """
     Format a daily summary message
 
     Parameters:
-    - data_buffer: List of dictionaries with OHLC data (used for pattern detection)
     - trade_history: List of executed trades (only from current session)
-    - current_balance: Current account balance
+    - current_balance: Current account balance from MT5
     - patterns_found: Number of patterns found
 
     Returns:
-    - str: Formatted message
+    - str: Formatted message with REAL trade data only
     """
     # Only use trades from the current session (today)
     today = datetime.now().date()
@@ -714,9 +727,14 @@ def execute_trade(symbol, pattern, volume):
     # Calculate profit for notification
     profit = pattern['points_gained'] * volume * POINT_VALUE
 
-    # Get account balance for notification
+    # Get account balance for notification - NO FALLBACKS, NO SIMULATIONS
     account_info = mt5.account_info()
-    balance_after = account_info.balance if account_info is not None else 0
+    if account_info is not None:
+        balance_after = account_info.balance
+    else:
+        # If we can't get the account balance, don't send notification
+        print("ERROR: Could not get actual account balance from MT5. Cannot send notification.")
+        return True  # Still return success since the trade was executed
 
     # Send Telegram notification
     try:
@@ -843,8 +861,8 @@ def run_realtime_trader():
                                         if data_buffer[i]['low'] < data_buffer[i-1]['low'] and data_buffer[i]['low'] < data_buffer[i+1]['low']:
                                             patterns_found += 1
 
-                            # Send summary notification
-                            summary = format_daily_summary(data_buffer, trade_history, current_balance, patterns_found)
+                            # Send summary notification with REAL trade data only
+                            summary = format_daily_summary(trade_history, current_balance, patterns_found)
                             send_telegram_notification(summary, parse_mode='Markdown')
                             print("Daily summary sent to Telegram")
 
@@ -887,8 +905,8 @@ def run_realtime_trader():
                                 if pattern:
                                     print(f"V pattern detected in recovered data at {pattern['bottom_time']}: {pattern['points_gained']:.2f} points")
 
-                                    # Calculate position size
-                                    volume = calculate_position_size(current_balance, pattern, trade_history)
+                                    # Calculate position size using REAL account balance and trade history
+                                    volume = calculate_position_size(current_balance, trade_history)
 
                                     # Execute trade
                                     if execute_trade(symbol, pattern, volume):
@@ -966,8 +984,8 @@ def run_realtime_trader():
                                 if pattern:
                                     print(f"V pattern detected in gap data at {pattern['bottom_time']}: {pattern['points_gained']:.2f} points")
 
-                                    # Calculate position size
-                                    volume = calculate_position_size(current_balance, pattern, trade_history)
+                                    # Calculate position size using REAL account balance and trade history
+                                    volume = calculate_position_size(current_balance, trade_history)
 
                                     # Execute trade
                                     if execute_trade(symbol, pattern, volume):
@@ -1017,8 +1035,8 @@ def run_realtime_trader():
                 if pattern:
                     print(f"V pattern detected at {pattern['bottom_time']}: {pattern['points_gained']:.2f} points")
 
-                    # Calculate position size
-                    volume = calculate_position_size(current_balance, pattern, trade_history)
+                    # Calculate position size using REAL account balance and trade history
+                    volume = calculate_position_size(current_balance, trade_history)
 
                     # Execute trade
                     if execute_trade(symbol, pattern, volume):
