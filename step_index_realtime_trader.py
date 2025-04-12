@@ -272,7 +272,7 @@ def calculate_position_size(current_balance, pattern, trade_history):
     Parameters:
     - current_balance: Current account balance
     - pattern: Pattern details
-    - trade_history: List of previous trades
+    - trade_history: List of previous trades (only from current session)
 
     Returns:
     - float: Optimal position size in lots
@@ -280,21 +280,31 @@ def calculate_position_size(current_balance, pattern, trade_history):
     # Theoretical loss for Kelly calculation (10 points)
     theoretical_loss = 10.0
 
-    # Calculate win rate from historical data
-    total_trades = len(trade_history)
-    winning_trades = sum(1 for trade in trade_history if trade['points_gained'] > 0)
+    # Get only trades from the current session (today)
+    today = datetime.now().date()
+    current_session_trades = [t for t in trade_history if t['time'].date() == today]
 
+    # Calculate win rate from current session data only
+    total_trades = len(current_session_trades)
+    winning_trades = sum(1 for trade in current_session_trades if trade['points_gained'] > 0)
+
+    # Always use a conservative estimate for the first few trades of each session
+    # This ensures we don't rely on historical data from previous sessions
     if total_trades >= 5:
         win_rate = winning_trades / total_trades
+        print(f"Using win rate of {win_rate:.2f} based on {total_trades} trades from current session")
     else:
         win_rate = 0.8  # Conservative estimate for first few trades
+        print(f"Using conservative win rate of {win_rate:.2f} (fewer than 5 trades in current session)")
 
-    # Calculate average win amount from historical data
+    # Calculate average win amount from current session data only
     if winning_trades > 0:
-        total_profit_points = sum(trade['points_gained'] for trade in trade_history if trade['points_gained'] > 0)
+        total_profit_points = sum(trade['points_gained'] for trade in current_session_trades if trade['points_gained'] > 0)
         avg_win = total_profit_points / winning_trades
+        print(f"Using average win of {avg_win:.2f} points based on current session trades")
     else:
         avg_win = pattern['points_gained']
+        print(f"Using current pattern points gained of {avg_win:.2f} as average win")
 
     # Calculate win/loss ratio
     win_loss_ratio = avg_win / theoretical_loss
@@ -472,14 +482,15 @@ def format_daily_summary(data_buffer, trade_history, current_balance, patterns_f
     Format a daily summary message
 
     Parameters:
-    - data_buffer: List of dictionaries with OHLC data
-    - trade_history: List of executed trades
+    - data_buffer: List of dictionaries with OHLC data (used for pattern detection)
+    - trade_history: List of executed trades (only from current session)
     - current_balance: Current account balance
     - patterns_found: Number of patterns found
 
     Returns:
     - str: Formatted message
     """
+    # Only use trades from the current session (today)
     today = datetime.now().date()
     today_trades = [t for t in trade_history if t['time'].date() == today]
 
@@ -505,17 +516,22 @@ def format_daily_summary(data_buffer, trade_history, current_balance, patterns_f
     else:
         message += "*No trades executed today*\n\n"
 
-    # Overall statistics
-    total_profit_all = sum(t['profit'] for t in trade_history)
-    win_count_all = sum(1 for t in trade_history if t['profit'] > 0)
-    loss_count_all = sum(1 for t in trade_history if t['profit'] <= 0)
-    win_rate_all = (win_count_all / len(trade_history)) * 100 if trade_history else 0
+    # Overall statistics (only for current session)
+    # We don't want to include historical trades from previous sessions
+    message += f"*Session Statistics:*\n"
+    message += f"*Total Trades Today:* {len(today_trades)}\n"
 
-    message += f"*Overall Statistics:*\n"
-    message += f"*Total Trades:* {len(trade_history)}\n"
-    message += f"*Total Profit:* ${total_profit_all:.2f}\n"
-    message += f"*Overall Win Rate:* {win_rate_all:.2f}%\n"
-    message += f"*Overall Wins/Losses:* {win_count_all}/{loss_count_all}\n"
+    if today_trades:
+        total_profit_all = sum(t['profit'] for t in today_trades)
+        win_count_all = sum(1 for t in today_trades if t['profit'] > 0)
+        loss_count_all = sum(1 for t in today_trades if t['profit'] <= 0)
+        win_rate_all = (win_count_all / len(today_trades)) * 100
+
+        message += f"*Total Profit Today:* ${total_profit_all:.2f}\n"
+        message += f"*Session Win Rate:* {win_rate_all:.2f}%\n"
+        message += f"*Session Wins/Losses:* {win_count_all}/{loss_count_all}\n"
+    else:
+        message += f"*No trades executed today*\n"
 
     # Current balance
     message += f"\n*Current Balance:* ${current_balance:.2f}\n"
@@ -1067,7 +1083,7 @@ def run_realtime_trader():
         # Save state on error
         save_trading_state(data_buffer, trade_history, current_balance, last_bar_time)
     finally:
-        # Print final summary
+        # Print final summary - only for current session
         print("\n=== Trading Session Summary ===")
 
         # Get the starting balance (either from saved state or initial balance)
@@ -1078,6 +1094,10 @@ def run_realtime_trader():
             account_info = mt5.account_info()
             starting_balance = account_info.balance if account_info is not None else INITIAL_BALANCE
 
+        # Get only trades from the current session (today)
+        today = datetime.now().date()
+        today_trades = [t for t in trade_history if t['time'].date() == today]
+
         print(f"Starting Balance: ${starting_balance:.2f}")
         print(f"Final Balance: ${current_balance:.2f}")
         print(f"Total Profit: ${current_balance - starting_balance:.2f}")
@@ -1087,17 +1107,19 @@ def run_realtime_trader():
             print(f"Return on Investment: {roi:.2f}%")
         else:
             print("Return on Investment: N/A (starting balance was 0)")
-        print(f"Total Trades: {len(trade_history)}")
+        print(f"Total Trades Today: {len(today_trades)}")
 
-        if trade_history:
-            winning_trades = sum(1 for trade in trade_history if trade['points_gained'] > 0)
-            win_rate = winning_trades / len(trade_history) * 100
-            print(f"Win Rate: {win_rate:.2f}%")
+        if today_trades:
+            winning_trades = sum(1 for trade in today_trades if trade['points_gained'] > 0)
+            win_rate = winning_trades / len(today_trades) * 100
+            print(f"Win Rate Today: {win_rate:.2f}%")
 
-            # Print last 5 trades
-            print("\nLast 5 Trades:")
-            for trade in trade_history[-5:]:
+            # Print today's trades
+            print("\nToday's Trades:")
+            for trade in today_trades:
                 print(f"Time: {trade['time']} | Points: {trade['points_gained']:.2f} | Profit: ${trade['profit']:.2f}")
+        else:
+            print("No trades executed today")
 
         # Shutdown MT5 connection
         mt5.shutdown()
