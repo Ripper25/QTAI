@@ -9,7 +9,7 @@ import json
 import os
 
 # Step Index Trading Parameters
-SPREAD = 2.0  # Fixed spread of 2.0 points
+SPREAD = 1.0  # Fixed spread of 1.0 point (confirmed from MT5 terminal)
 MIN_VOLUME = 0.1  # Minimum volume of 0.1 lots
 MAX_VOLUME = 50  # Maximum volume of 50 lots
 VOL_LIMIT = 200  # Volume limit of 200 lots in one direction

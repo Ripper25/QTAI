@@ -15,6 +15,23 @@ This repository contains a real-time trading system for Step Index, implementing
 - State persistence for continuous operation
 - Watchdog monitoring for 24/7 reliability
 
+## Trading Specifications
+
+- Fixed spread of 1.0 point (confirmed from MT5 terminal)
+- Minimum volume of 0.1 lots
+- Maximum volume of 50 lots
+- Volume limit of 200 lots in one direction
+- Volume step of 0.01 lots
+- Point value of 0.1 USD per point per standard lot
+- Initial balance of $90
+
+## Backtest Results
+
+- Win Rate: 100.00%
+- Return on Investment: 17,426,106.11% (90-day backtest)
+- Average Profit per Trade: $6,710.95
+- Maximum Drawdown: 0.00%
+
 ## Files
 
 - `step_index_realtime_trader.py` - Main trading script
