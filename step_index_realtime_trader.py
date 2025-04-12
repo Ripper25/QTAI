@@ -9,6 +9,8 @@ import json
 import os
 import argparse
 import telebot  # For Telegram bot integration
+import subprocess
+import threading
 
 # Step Index Trading Parameters
 SPREAD = 1.0  # Fixed spread of 1.0 point (confirmed from MT5 terminal)
@@ -1087,11 +1089,77 @@ def run_realtime_trader():
         mt5.shutdown()
         print("\nMT5 connection closed.")
 
+def start_self_monitoring():
+    """
+    Start self-monitoring to automatically restart the script if it crashes
+    """
+    # Create logs directory if it doesn't exist
+    if not os.path.exists('logs'):
+        os.makedirs('logs')
+
+    # Generate log file name with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    log_file_path = os.path.join('logs', f'trading_log_{timestamp}.txt')
+
+    print(f"Starting self-monitoring with log file: {log_file_path}")
+
+    # Start the monitoring in a separate thread
+    monitor_thread = threading.Thread(target=monitor_self, args=(log_file_path,))
+    monitor_thread.daemon = True
+    monitor_thread.start()
+
+    # Send startup notification to Telegram
+    try:
+        message = f"🚀 *QUANTA Trading System Started* 🚀\n\n"
+        message += f"*Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        message += f"*Mode:* LIVE\n"
+        message += f"*Log File:* {log_file_path}\n"
+        send_telegram_notification(message, parse_mode='Markdown')
+    except Exception as e:
+        print(f"Error sending startup notification: {e}")
+
+def monitor_self(log_file_path):
+    """
+    Monitor the script and restart it if it crashes
+    """
+    # Get the current script path
+    script_path = os.path.abspath(__file__)
+
+    while True:
+        # Sleep for a while to avoid excessive CPU usage
+        time.sleep(60)
+
+        # Check if the main thread is still running
+        if not threading.main_thread().is_alive():
+            print("Main thread has stopped. Restarting the script...")
+
+            # Send notification about restart
+            try:
+                message = f"⚠️ *QUANTA Trading System Restarting* ⚠️\n\n"
+                message += f"*Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+                message += f"*Reason:* Main thread stopped\n"
+                send_telegram_notification(message, parse_mode='Markdown')
+            except Exception as e:
+                print(f"Error sending restart notification: {e}")
+
+            # Start a new process with the same script
+            with open(log_file_path, 'a') as log_file:
+                subprocess.Popen(
+                    [sys.executable, script_path, "--mode=live", "--self-monitor"],
+                    stdout=log_file,
+                    stderr=log_file
+                )
+
+            # Exit this process
+            os._exit(0)
+
 if __name__ == "__main__":
     # Parse command line arguments
     parser = argparse.ArgumentParser(description='QUANTA Step Index Real-Time Trader')
     parser.add_argument('--mode', type=str, default='live', choices=['live', 'backtest'],
                         help='Trading mode: live or backtest (default: live)')
+    parser.add_argument('--self-monitor', action='store_true',
+                        help='Enable self-monitoring to automatically restart if the script crashes')
     args = parser.parse_args()
 
     # Ensure we're in live mode
@@ -1099,4 +1167,10 @@ if __name__ == "__main__":
         print(f"WARNING: Requested mode '{args.mode}' is not supported. Forcing 'live' mode.")
 
     print(f"Running in LIVE mode with real account balance")
+
+    # Start self-monitoring if enabled
+    if args.self_monitor:
+        start_self_monitoring()
+
+    # Run the trading system
     run_realtime_trader()
