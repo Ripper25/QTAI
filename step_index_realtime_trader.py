@@ -7,6 +7,7 @@ import time
 import sys
 import json
 import os
+import argparse
 
 # Step Index Trading Parameters
 SPREAD = 1.0  # Fixed spread of 1.0 point (confirmed from MT5 terminal)
@@ -564,8 +565,16 @@ def run_realtime_trader():
             mt5.shutdown()
             return
 
-        # Initialize trading variables
-        current_balance = INITIAL_BALANCE
+        # Get actual account balance from MT5
+        account_info = mt5.account_info()
+        if account_info is not None:
+            current_balance = account_info.balance
+            print(f"Using actual account balance: ${current_balance:.2f}")
+        else:
+            # Fallback to initial balance if account info is not available
+            current_balance = INITIAL_BALANCE
+            print(f"Could not get actual account balance. Using default: ${current_balance:.2f}")
+
         trade_history = []
         last_bar_time = data_buffer[-1]['time']
 
@@ -787,8 +796,21 @@ def run_realtime_trader():
                         print(f"Profit: ${trade['profit']:.2f}")
                         print(f"Balance: ${trade['balance_after']:.2f}")
                         print(f"Total Trades: {len(trade_history)}")
-                        print(f"Total Profit: ${current_balance - INITIAL_BALANCE:.2f}")
-                        print(f"ROI: {((current_balance - INITIAL_BALANCE) / INITIAL_BALANCE) * 100:.2f}%")
+                        # Get the starting balance (either from saved state or actual account balance)
+                        if saved_state:
+                            starting_balance = saved_state['current_balance']
+                        else:
+                            # Use the account balance we got earlier
+                            starting_balance = account_info.balance if account_info is not None else INITIAL_BALANCE
+
+                        print(f"Total Profit: ${current_balance - starting_balance:.2f}")
+
+                        # Calculate ROI (handle case where starting balance is 0)
+                        if starting_balance > 0:
+                            roi = ((current_balance - starting_balance) / starting_balance) * 100
+                            print(f"ROI: {roi:.2f}%")
+                        else:
+                            print("ROI: N/A (starting balance was 0)")
 
             # Wait for the next bar (check every 10 seconds)
             time.sleep(10)
@@ -807,10 +829,24 @@ def run_realtime_trader():
     finally:
         # Print final summary
         print("\n=== Trading Session Summary ===")
-        print(f"Starting Balance: ${INITIAL_BALANCE:.2f}")
+
+        # Get the starting balance (either from saved state or initial balance)
+        if saved_state:
+            starting_balance = saved_state['current_balance']
+        else:
+            # Try to get account info again
+            account_info = mt5.account_info()
+            starting_balance = account_info.balance if account_info is not None else INITIAL_BALANCE
+
+        print(f"Starting Balance: ${starting_balance:.2f}")
         print(f"Final Balance: ${current_balance:.2f}")
-        print(f"Total Profit: ${current_balance - INITIAL_BALANCE:.2f}")
-        print(f"Return on Investment: {((current_balance - INITIAL_BALANCE) / INITIAL_BALANCE) * 100:.2f}%")
+        print(f"Total Profit: ${current_balance - starting_balance:.2f}")
+        # Calculate ROI (handle case where starting balance is 0)
+        if starting_balance > 0:
+            roi = ((current_balance - starting_balance) / starting_balance) * 100
+            print(f"Return on Investment: {roi:.2f}%")
+        else:
+            print("Return on Investment: N/A (starting balance was 0)")
         print(f"Total Trades: {len(trade_history)}")
 
         if trade_history:
@@ -828,4 +864,15 @@ def run_realtime_trader():
         print("\nMT5 connection closed.")
 
 if __name__ == "__main__":
+    # Parse command line arguments
+    parser = argparse.ArgumentParser(description='QUANTA Step Index Real-Time Trader')
+    parser.add_argument('--mode', type=str, default='live', choices=['live', 'backtest'],
+                        help='Trading mode: live or backtest (default: live)')
+    args = parser.parse_args()
+
+    # Ensure we're in live mode
+    if args.mode != 'live':
+        print(f"WARNING: Requested mode '{args.mode}' is not supported. Forcing 'live' mode.")
+
+    print(f"Running in LIVE mode with real account balance")
     run_realtime_trader()

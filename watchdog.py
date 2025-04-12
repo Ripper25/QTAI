@@ -54,9 +54,9 @@ def monitor_trading_script():
 
                 return
 
-            # Start the trading script and redirect output to log file
+            # Start the trading script in live mode and redirect output to log file
             process = subprocess.Popen(
-                ["python", script_path],
+                ["python", script_path, "--mode=live"],  # Explicitly set live mode
                 stdout=log_file,
                 stderr=log_file,
                 cwd=script_dir  # Set the working directory explicitly
