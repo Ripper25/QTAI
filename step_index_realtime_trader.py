@@ -8,6 +8,7 @@ import sys
 import json
 import os
 import argparse
+import telebot  # For Telegram bot integration
 
 # Step Index Trading Parameters
 SPREAD = 1.0  # Fixed spread of 1.0 point (confirmed from MT5 terminal)
@@ -35,6 +36,13 @@ BUFFER_SIZE = 20  # Number of bars to keep in buffer
 LOGIN = 140276062
 PASSWORD = "@Ripper25"
 SERVER = "DerivSVG-Server-03"
+
+# Telegram Bot Configuration
+TELEGRAM_BOT_TOKEN = "7717225420:AAE5TNborRsbniBfuGc4yuPQnftSZ2Gyuvs"
+TELEGRAM_CHAT_ID = 1435296772  # Your chat ID
+
+# Initialize Telegram bot
+bot = telebot.TeleBot(TELEGRAM_BOT_TOKEN)
 
 def connect_to_mt5():
     """
@@ -405,6 +413,113 @@ def check_heartbeat(last_heartbeat):
         return False
     return True
 
+def send_telegram_notification(message, parse_mode=None):
+    """
+    Send a notification to Telegram
+
+    Parameters:
+    - message: Message to send
+    - parse_mode: Message format (None, 'Markdown', 'HTML')
+    """
+    try:
+        bot.send_message(TELEGRAM_CHAT_ID, message, parse_mode=parse_mode)
+        print(f"Telegram notification sent: {message[:50]}...")
+    except Exception as e:
+        print(f"Error sending Telegram notification: {e}")
+
+def format_trade_notification(pattern, volume, profit, balance_after):
+    """
+    Format a trade notification message
+
+    Parameters:
+    - pattern: Pattern details
+    - volume: Trade volume
+    - profit: Trade profit
+    - balance_after: Balance after trade
+
+    Returns:
+    - str: Formatted message
+    """
+    message = f"🚨 *QUANTA TRADE EXECUTED* 🚨\n\n"
+    message += f"*Time:* {pattern['bottom_time']}\n"
+    message += f"*Entry Price:* {pattern['entry_price']}\n"
+    message += f"*Exit Price:* {pattern['exit_price']}\n"
+    message += f"*Volume:* {volume} lots\n"
+    message += f"*Points Gained:* {pattern['points_gained']:.2f}\n"
+    message += f"*Profit:* ${profit:.2f}\n"
+    message += f"*Balance:* ${balance_after:.2f}\n"
+    return message
+
+def format_error_notification(error_message):
+    """
+    Format an error notification message
+
+    Parameters:
+    - error_message: Error message
+
+    Returns:
+    - str: Formatted message
+    """
+    message = f"⚠️ *QUANTA ERROR* ⚠️\n\n"
+    message += f"{error_message}\n"
+    message += f"*Time:* {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    return message
+
+def format_daily_summary(data_buffer, trade_history, current_balance, patterns_found):
+    """
+    Format a daily summary message
+
+    Parameters:
+    - data_buffer: List of dictionaries with OHLC data
+    - trade_history: List of executed trades
+    - current_balance: Current account balance
+    - patterns_found: Number of patterns found
+
+    Returns:
+    - str: Formatted message
+    """
+    today = datetime.now().date()
+    today_trades = [t for t in trade_history if t['time'].date() == today]
+
+    message = f"📊 *QUANTA DAILY SUMMARY* 📊\n\n"
+    message += f"*Date:* {today.strftime('%Y-%m-%d')}\n\n"
+
+    # Pattern stats
+    message += f"*Pattern Stats:*\n"
+    message += f"*Patterns Found:* {patterns_found}\n"
+    message += f"*Patterns Traded:* {len(today_trades)}\n\n"
+
+    if today_trades:
+        total_profit = sum(t['profit'] for t in today_trades)
+        win_count = sum(1 for t in today_trades if t['profit'] > 0)
+        loss_count = sum(1 for t in today_trades if t['profit'] <= 0)
+        win_rate = (win_count / len(today_trades)) * 100 if today_trades else 0
+
+        message += f"*Trading Stats:*\n"
+        message += f"*Trades Today:* {len(today_trades)}\n"
+        message += f"*Total Profit Today:* ${total_profit:.2f}\n"
+        message += f"*Win Rate:* {win_rate:.2f}%\n"
+        message += f"*Wins/Losses:* {win_count}/{loss_count}\n\n"
+    else:
+        message += "*No trades executed today*\n\n"
+
+    # Overall statistics
+    total_profit_all = sum(t['profit'] for t in trade_history)
+    win_count_all = sum(1 for t in trade_history if t['profit'] > 0)
+    loss_count_all = sum(1 for t in trade_history if t['profit'] <= 0)
+    win_rate_all = (win_count_all / len(trade_history)) * 100 if trade_history else 0
+
+    message += f"*Overall Statistics:*\n"
+    message += f"*Total Trades:* {len(trade_history)}\n"
+    message += f"*Total Profit:* ${total_profit_all:.2f}\n"
+    message += f"*Overall Win Rate:* {win_rate_all:.2f}%\n"
+    message += f"*Overall Wins/Losses:* {win_count_all}/{loss_count_all}\n"
+
+    # Current balance
+    message += f"\n*Current Balance:* ${current_balance:.2f}\n"
+
+    return message
+
 def save_trading_state(data_buffer, trade_history, current_balance, last_bar_time):
     """
     Save the current state of the trading system
@@ -579,6 +694,20 @@ def execute_trade(symbol, pattern, volume):
 
     print(f"Trade executed successfully, ticket: {result.order}")
 
+    # Calculate profit for notification
+    profit = pattern['points_gained'] * volume * POINT_VALUE
+
+    # Get account balance for notification
+    account_info = mt5.account_info()
+    balance_after = account_info.balance if account_info is not None else 0
+
+    # Send Telegram notification
+    try:
+        notification = format_trade_notification(pattern, volume, profit, balance_after)
+        send_telegram_notification(notification, parse_mode='Markdown')
+    except Exception as e:
+        print(f"Error sending Telegram notification: {e}")
+
     return True
 
 def run_realtime_trader():
@@ -661,9 +790,35 @@ def run_realtime_trader():
                 last_heartbeat = datetime.now()
 
             # Periodically save state
-            if (datetime.now() - last_state_save).total_seconds() > state_save_interval:
+            now = datetime.now()
+            if (now - last_state_save).total_seconds() > state_save_interval:
                 save_trading_state(data_buffer, trade_history, current_balance, last_bar_time)
-                last_state_save = datetime.now()
+                last_state_save = now
+
+                # Send daily summary at 8 PM
+                if now.hour == 20 and (now.minute >= 0 and now.minute < 5):
+                    # Only send once per day (within the first 5 minutes of 8 PM)
+                    today = now.date()
+                    if not hasattr(run_realtime_trader, 'last_summary_date') or run_realtime_trader.last_summary_date != today:
+                        try:
+                            # Count patterns found today
+                            patterns_found = 0
+                            for i in range(len(data_buffer) - 1):
+                                if data_buffer[i]['time'].date() == today:
+                                    # Check if this could have been a pattern (local minimum)
+                                    if i > 0 and i < len(data_buffer) - 1:
+                                        if data_buffer[i]['low'] < data_buffer[i-1]['low'] and data_buffer[i]['low'] < data_buffer[i+1]['low']:
+                                            patterns_found += 1
+
+                            # Send summary notification
+                            summary = format_daily_summary(data_buffer, trade_history, current_balance, patterns_found)
+                            send_telegram_notification(summary, parse_mode='Markdown')
+                            print("Daily summary sent to Telegram")
+
+                            # Remember that we sent the summary today
+                            run_realtime_trader.last_summary_date = today
+                        except Exception as e:
+                            print(f"Error sending daily summary: {e}")
 
             # Get the latest bar
             new_bar = get_new_bar(symbol, mt5.TIMEFRAME_M1)
@@ -673,7 +828,16 @@ def run_realtime_trader():
                 print(f"Failed to get latest bar. Attempt {consecutive_failures}/{max_failures}")
 
                 if consecutive_failures >= max_failures:
-                    print("Maximum consecutive failures reached. Attempting recovery...")
+                    error_msg = "Maximum consecutive failures reached. Attempting recovery..."
+                    print(error_msg)
+
+                    # Send error notification to Telegram
+                    try:
+                        notification = format_error_notification(error_msg)
+                        send_telegram_notification(notification, parse_mode='Markdown')
+                    except Exception as e:
+                        print(f"Error sending Telegram notification: {e}")
+
                     if ensure_mt5_connection():
                         # Try to recover missing data
                         recovered_data = recover_from_data_gap(symbol, last_bar_time)
