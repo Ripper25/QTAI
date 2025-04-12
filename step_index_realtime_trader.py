@@ -485,6 +485,13 @@ def check_open_positions(symbol):
         print(f"No positions found for {symbol}, error code: {mt5.last_error()}")
         return False
 
+    if len(positions) > 0:
+        print(f"Found {len(positions)} open positions for {symbol}:")
+        for position in positions:
+            print(f"  Ticket: {position.ticket}, Type: {'Buy' if position.type == 0 else 'Sell'}, Volume: {position.volume}, Profit: {position.profit}")
+    else:
+        print(f"No open positions for {symbol}")
+
     return len(positions) > 0
 
 def execute_trade(symbol, pattern, volume):
@@ -511,31 +518,63 @@ def execute_trade(symbol, pattern, volume):
     print(f"  Points Gained: {pattern['points_gained']}")
     print(f"  Profit: ${pattern['points_gained'] * volume * POINT_VALUE:.2f}")
 
-    # Place a real trade using MT5 API
+    # Place a real trade using MT5 API with the approach that worked in testing
     # Define trade request
     request = {
         "action": mt5.TRADE_ACTION_DEAL,
         "symbol": symbol,
         "volume": volume,
         "type": mt5.ORDER_TYPE_BUY,
-        "price": pattern['entry_price'],
+        "price": 0.0,  # Market price (0.0 means current market price)
         "sl": 0.0,  # No stop loss
         "tp": pattern['exit_price'],  # Take profit at exit price
         "deviation": 10,
         "magic": 123456,
-        "comment": "QUANTA V Pattern",
+        "comment": "QUANTA",  # Keep comment short and simple
         "type_time": mt5.ORDER_TIME_GTC,
-        "type_filling": mt5.ORDER_FILLING_IOC,
+        "type_filling": mt5.ORDER_FILLING_FOK,  # Fill or Kill - this worked in testing
     }
 
     # Send trade request
     result = mt5.order_send(request)
     if result is None:
-        print(f"Trade execution failed, error code: {mt5.last_error()}")
+        error_code = mt5.last_error()
+        print(f"Trade execution failed, error code: {error_code}")
+
+        # Provide more detailed error information
+        if error_code == 10027:
+            print("Error 10027: AutoTrading disabled or other permission issue")
+            print("Possible solutions:")
+            print("1. Check if AutoTrading is enabled in MT5 (button in top toolbar)")
+            print("2. Check if the Expert Advisors have permission to trade")
+            print("3. Check if there are any active alerts or dialogs in MT5")
+            print("4. Try restarting MT5")
+        elif error_code == 10018:
+            print("Error 10018: Market is closed")
+        elif error_code == 10019:
+            print("Error 10019: No connection to trade server")
+        elif error_code == 10025:
+            print("Error 10025: Order validation error")
+
         return False
 
     if result.retcode != mt5.TRADE_RETCODE_DONE:
         print(f"Trade execution failed, error code: {result.retcode}")
+
+        # Provide more detailed error information for common return codes
+        if result.retcode == 10004:
+            print("Error 10004: Trade server is busy")
+        elif result.retcode == 10006:
+            print("Error 10006: Request rejected")
+        elif result.retcode == 10007:
+            print("Error 10007: Request canceled by trader")
+        elif result.retcode == 10010:
+            print("Error 10010: Only close allowed")
+        elif result.retcode == 10011:
+            print("Error 10011: Trade disabled")
+        elif result.retcode == 10012:
+            print("Error 10012: Not enough money")
+
         return False
 
     print(f"Trade executed successfully, ticket: {result.order}")
