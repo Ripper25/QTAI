@@ -360,11 +360,21 @@ def process_new_data(symbol):
 
     # Check if we have new data
     latest_time = df['time'].max()
-    if last_processed_time is not None and latest_time <= last_processed_time:
+
+    # On first run, just initialize the last_processed_time without processing patterns
+    if last_processed_time is None:
+        print(f"Initializing last processed time to {latest_time}")
+        last_processed_time = latest_time
+        print("Waiting for new data before processing patterns...")
+        return
+
+    # If no new data, return without processing
+    if latest_time <= last_processed_time:
         print(f"No new data since {last_processed_time}")
         return
 
     # Update last processed time
+    print(f"Processing new data from {last_processed_time} to {latest_time}")
     last_processed_time = latest_time
 
     # Detect V patterns
@@ -398,6 +408,14 @@ def process_new_data(symbol):
         # Get current account balance
         current_balance = check_account_balance()
         if current_balance is None:
+            print("Failed to get account balance. Cannot place trade.")
+            continue
+
+        print(f"Current account balance: ${current_balance}")
+
+        if current_balance <= 0:
+            print("Account balance is zero or negative. Cannot place trade.")
+            send_telegram_message("⚠️ Cannot place trade: Account balance is zero or negative")
             continue
 
         # Calculate optimal position size
@@ -411,6 +429,8 @@ def process_new_data(symbol):
             vol_step=VOL_STEP,
             point_value=POINT_VALUE
         )
+
+        print(f"Calculated position size: {volume} lots based on balance ${current_balance}")
 
         # Place the trade
         place_trade(symbol, pattern, volume)
@@ -519,7 +539,8 @@ def main():
 
     # Main trading loop
     print("Starting main trading loop...")
-    send_telegram_message("🔄 Starting main trading loop")
+    print("NOTE: No trades will be placed on startup - waiting for new patterns to form")
+    send_telegram_message("🔄 Starting main trading loop\nWaiting for new patterns to form...")
 
     try:
         while True:
