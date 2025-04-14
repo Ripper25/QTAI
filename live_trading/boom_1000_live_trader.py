@@ -1,3 +1,7 @@
+# Boom 1000 Index Live Trader
+# This script can be run directly to activate the entire trading system
+# No need for the watchdog - just run: python boom_1000_live_trader.py
+
 import pandas as pd
 import numpy as np
 import time
@@ -27,7 +31,7 @@ VELOCITY_THRESHOLD = 2.1  # Only trade patterns with bottom_to_high_velocity >= 
 RANGE_THRESHOLD = 2.1  # Only trade patterns with confirm_range <= this value
 
 # MT5 Connection Parameters
-LOGIN = 40496559  # Demo account for testing filling and position sizing
+LOGIN = 140276062  # Real account
 PASSWORD = "@Ripper25"
 SERVER = "DerivSVG-Server-03"
 
@@ -458,6 +462,21 @@ def daily_summary_thread():
         # Send summary
         send_daily_summary()
 
+def handle_exit(signum=None, frame=None):
+    """
+    Handle exit signals gracefully
+    """
+    print("\nShutdown signal received. Closing connections...")
+    send_telegram_message("⚠️ Trader shutting down...")
+
+    # Shutdown MT5 connection
+    mt5.shutdown()
+    print("MT5 connection closed")
+    send_telegram_message("🔴 Trader stopped. MT5 connection closed")
+
+    # Exit the program
+    sys.exit(0)
+
 def main():
     """
     Main function
@@ -465,7 +484,17 @@ def main():
     global SYMBOL, last_processed_time
 
     print("=== Boom 1000 Index Live Trader ===")
+    print("This script runs the complete trading system - no need for watchdog")
     print("Connecting to MT5...")
+
+    # Set up signal handlers for graceful shutdown
+    try:
+        import signal
+        signal.signal(signal.SIGINT, handle_exit)  # Ctrl+C
+        signal.signal(signal.SIGTERM, handle_exit)  # Termination signal
+        print("Signal handlers registered for graceful shutdown")
+    except (ImportError, AttributeError):
+        print("Signal handlers not available on this system")
 
     # Set up Telegram bot
     setup_telegram_bot()
